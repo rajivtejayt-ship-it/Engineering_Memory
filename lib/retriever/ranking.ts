@@ -20,6 +20,22 @@ export const EVIDENCE_RANKING_WEIGHTS = {
   modificationFrequency: 0.1,
 } as const;
 
+const SEMANTIC_FALLBACK_MAX_SCORE = 0.4;
+
+const QUESTION_TYPE_TERMS: Record<QuestionType, readonly string[]> = {
+  WHY_INTRODUCED: ["introduce", "introduced", "add", "added", "create", "created"],
+  WHY_CHANGED: ["change", "changed", "update", "updated", "modify", "modified"],
+  BREAKAGE: ["break", "broken", "failure", "fail", "bug", "regression", "fix"],
+  RELEVANCE: ["relevant", "relevance", "impact", "dependency", "depend"],
+  UNKNOWN: [],
+};
+
+const STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "does", "for", "from",
+  "how", "in", "is", "it", "of", "on", "or", "that", "the", "this", "to",
+  "was", "what", "when", "which", "who", "why", "with",
+]);
+
 /** Ranked evidence grouped by the repository record type. */
 export interface EvidenceRankingResult {
   commits: RankedEvidence<RepositoryCommit>[];
@@ -33,14 +49,13 @@ export interface EvidenceRankingResult {
  * model or a repository provider; callers supply already-normalized API data.
  */
 export class EvidenceRankingEngine {
+  constructor(private readonly questionText = "") {}
+
   rank(
     repositoryContext: RepositoryContext,
     repositoryData: RepositoryEvidenceData,
     questionType: QuestionType,
   ): EvidenceRankingResult {
-    // Ranking uses repository relationships only; retain this argument so the
-    // retriever contract can evolve without changing the orchestration layer.
-    void questionType;
     const commits = repositoryData.commits ?? [];
     const pullRequests = repositoryData.pullRequests ?? [];
     const issues = repositoryData.issues ?? [];
@@ -97,6 +112,11 @@ export class EvidenceRankingEngine {
       ...documentation.map((document) => document.updatedAt),
     ];
     const recencyRange = getRecencyRange(timestamps);
+    const semanticQuery = createSemanticQuery(this.questionText, questionType);
+    const structuralSignalsAvailable =
+      targetCommitIds.size > 0 ||
+      targetPullRequestNumbers.size > 0 ||
+      targetIssueNumbers.size > 0;
 
     return {
       commits: commits.map((commit) =>
@@ -113,6 +133,9 @@ export class EvidenceRankingEngine {
           fileModificationCounts,
           maxModificationCount,
           recencyRange,
+          semanticQuery,
+          structuralSignalsAvailable,
+          getEvidenceText(commit.message, commit.author),
         ),
       ),
       pullRequests: pullRequests.map((pullRequest) =>
@@ -129,6 +152,9 @@ export class EvidenceRankingEngine {
           fileModificationCounts,
           maxModificationCount,
           recencyRange,
+          semanticQuery,
+          structuralSignalsAvailable,
+          getEvidenceText(pullRequest.title, pullRequest.author),
         ),
       ),
       issues: issues.map((issue) =>
@@ -145,6 +171,9 @@ export class EvidenceRankingEngine {
           fileModificationCounts,
           maxModificationCount,
           recencyRange,
+          semanticQuery,
+          structuralSignalsAvailable,
+          getEvidenceText(issue.title),
         ),
       ),
       documentation: documentation.map((document) =>
@@ -161,6 +190,9 @@ export class EvidenceRankingEngine {
           fileModificationCounts,
           maxModificationCount,
           recencyRange,
+          semanticQuery,
+          structuralSignalsAvailable,
+          getEvidenceText(document.title, document.summary),
         ),
       ),
     };
@@ -179,6 +211,9 @@ export class EvidenceRankingEngine {
     fileModificationCounts: Map<string, number>,
     maxModificationCount: number,
     recencyRange: { oldest: number; newest: number } | undefined,
+    semanticQuery: SemanticQuery,
+    structuralSignalsAvailable: boolean,
+    evidenceText: string,
   ): RankedEvidence<T> {
     const reasons: string[] = [];
     let score = 0;
@@ -224,8 +259,122 @@ export class EvidenceRankingEngine {
       reasons.push("Touches frequently modified repository files.");
     }
 
+    if (!structuralSignalsAvailable) {
+      const semanticMatch = getSemanticMatch(semanticQuery, evidenceText);
+      if (semanticMatch.score > 0) {
+        score += semanticMatch.score;
+        reasons.push(...semanticMatch.reasons);
+      }
+    }
+
     return { item, score: Math.min(score, 1), reasons };
   }
+}
+
+interface SemanticQuery {
+  questionTerms: ReadonlySet<string>;
+  questionTypeTerms: ReadonlySet<string>;
+}
+
+interface SemanticMatch {
+  score: number;
+  reasons: string[];
+}
+
+function createSemanticQuery(
+  questionText: string,
+  questionType: QuestionType,
+): SemanticQuery {
+  return {
+    questionTerms: new Set(tokenize(questionText)),
+    questionTypeTerms: new Set(QUESTION_TYPE_TERMS[questionType]),
+  };
+}
+
+function getEvidenceText(...values: Array<string | undefined>): string {
+  return values.filter((value): value is string => typeof value === "string").join(" ");
+}
+
+function getSemanticMatch(
+  query: SemanticQuery,
+  evidenceText: string,
+): SemanticMatch {
+  const evidenceTerms = new Set(tokenize(evidenceText));
+  if (evidenceTerms.size === 0 || query.questionTerms.size === 0) {
+    return { score: 0, reasons: [] };
+  }
+
+  const matchedQuestionTerms = intersection(query.questionTerms, evidenceTerms);
+  if (matchedQuestionTerms.length === 0) {
+    return { score: 0, reasons: [] };
+  }
+
+  const keywordOverlap = matchedQuestionTerms.length / query.questionTerms.size;
+  const normalizedSimilarity =
+    matchedQuestionTerms.length /
+    Math.sqrt(query.questionTerms.size * evidenceTerms.size);
+  const matchedIntentTerms = intersection(query.questionTypeTerms, evidenceTerms);
+  const intentCoverage =
+    query.questionTypeTerms.size === 0
+      ? 0
+      : matchedIntentTerms.length / query.questionTypeTerms.size;
+  const score = Math.min(
+    SEMANTIC_FALLBACK_MAX_SCORE,
+    SEMANTIC_FALLBACK_MAX_SCORE *
+      (0.65 * keywordOverlap + 0.25 * normalizedSimilarity + 0.1 * intentCoverage),
+  );
+  const reasons = [
+    `Matches question keywords: ${matchedQuestionTerms.join(", ")}.`,
+  ];
+
+  if (matchedIntentTerms.length > 0) {
+    reasons.push(
+      `Matches ${formatQuestionType(query.questionTypeTerms)} intent terms: ${matchedIntentTerms.join(", ")}.`,
+    );
+  }
+
+  return { score, reasons };
+}
+
+function formatQuestionType(terms: ReadonlySet<string>): string {
+  for (const [questionType, questionTypeTerms] of Object.entries(QUESTION_TYPE_TERMS)) {
+    if (questionTypeTerms.length === terms.size && questionTypeTerms.every((term) => terms.has(term))) {
+      return questionType;
+    }
+  }
+
+  return "question";
+}
+
+function tokenize(value: string): string[] {
+  return [...new Set(
+    value
+      .toLowerCase()
+      .match(/[a-z0-9]+/g)
+      ?.map(normalizeToken)
+      .filter((token) => token.length > 1 && !STOP_WORDS.has(token)) ?? [],
+  )];
+}
+
+function normalizeToken(token: string): string {
+  if (token.endsWith("ies") && token.length > 4) {
+    return `${token.slice(0, -3)}y`;
+  }
+  if (token.endsWith("ed") && token.length > 4) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith("s") && token.length > 3) {
+    return token.slice(0, -1);
+  }
+
+  return token;
+}
+
+function intersection(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): string[] {
+  return [...left].filter((value) => right.has(value)).sort();
 }
 
 function getFolder(filePath: string | undefined): string | undefined {

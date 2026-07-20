@@ -120,3 +120,42 @@ test("Retriever returns only top-ranked unique evidence", () => {
   assert.equal(result.pullRequests[0].item.number, 7);
   assert.equal(result.issues.length, 1);
 });
+
+test("Evidence Ranking Engine falls back to question semantics without file relationships", () => {
+  const lightweightData: RepositoryEvidenceData = {
+    commits: [
+      {
+        id: "commit-auth",
+        message: "Introduce authentication middleware",
+        authoredAt: "2025-01-01T00:00:00Z",
+        author: "Ada",
+        files: [],
+      },
+      {
+        id: "commit-unrelated",
+        message: "Refresh dashboard colors",
+        authoredAt: "2025-01-02T00:00:00Z",
+        author: "Bea",
+        files: [],
+      },
+    ],
+  };
+
+  const ranked = new EvidenceRankingEngine(
+    "Why was authentication middleware introduced?",
+  ).rank(context, lightweightData, "WHY_INTRODUCED");
+  const authenticationCommit = ranked.commits.find(
+    (item) => item.item.id === "commit-auth",
+  );
+  const unrelatedCommit = ranked.commits.find(
+    (item) => item.item.id === "commit-unrelated",
+  );
+
+  assert.ok(authenticationCommit);
+  assert.ok(unrelatedCommit);
+  assert.ok(authenticationCommit.score > unrelatedCommit.score);
+  assert.match(
+    authenticationCommit.reasons.join(" "),
+    /matches question keywords/i,
+  );
+});

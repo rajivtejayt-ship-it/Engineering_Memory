@@ -1,0 +1,16 @@
+export const AURORA_COLORS = {
+  primary: 'var(--accent)',
+  secondary: 'var(--success)',
+  glow: 'var(--accent)',
+  glowSubtle: 'var(--accent)',
+  background: 'var(--bg-base)',
+  surface: 'var(--bg-panel)',
+  surfaceElevated: 'var(--bg-card)',
+  border: 'var(--border)',
+  textPrimary: 'var(--text)',
+  textSecondary: 'var(--text-secondary)',
+  textMuted: 'var(--text-secondary)',
+  success: 'var(--success)',
+  warning: 'var(--warning)',
+  error: 'var(--danger)',
+};

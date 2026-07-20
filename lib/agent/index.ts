@@ -15,6 +15,7 @@ import {
   createEvidenceRetriever,
   type RepositoryDataSource,
 } from "@/lib/retriever";
+import { GitHubRepositoryDataSource } from "@/lib/retriever/github-data-source";
 import type { AIResponse, Question, RepositoryContext } from "@/lib/types";
 
 import {
@@ -58,15 +59,6 @@ const defaultPromptBuilders: Record<QuestionType, PromptBuilder> = {
 };
 
 /**
- * Safe default used until a backend evidence provider is injected. Empty
- * repositories remain answerable: the prompt receives an explicit absence of
- * evidence and the deterministic metadata reports zero retrieved items.
- */
-const emptyRepositoryDataSource: RepositoryDataSource = {
-  getRepositoryData: async () => undefined,
-};
-
-/**
  * Compatibility facade for callers that prefer a single agent entry point.
  * It accepts backend repository payloads and delegates all work to Core.
  */
@@ -78,7 +70,7 @@ export class EngineeringMemoryAgent {
     this.dependencies = {
       classifier: classifyQuestion,
       repositoryAdapter: new RepositoryApiAdapter(),
-      repositoryDataSource: emptyRepositoryDataSource,
+      repositoryDataSource: new GitHubRepositoryDataSource(),
       promptBuilders: defaultPromptBuilders,
       geminiClient: generateGeminiResponse,
       responseFormatter: formatGeminiResponse,

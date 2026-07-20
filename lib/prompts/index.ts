@@ -1,4 +1,5 @@
 import type { RepositoryContext } from "@/lib/types";
+import { SYSTEM_PROMPT } from "./system";
 
 export {
   buildGeminiPrompt,
@@ -38,27 +39,31 @@ ${formatRepositoryContext(repositoryContext)}
 ## User Question
 ${question}
 
-## Instructions
+## Evidence-Led Analysis Instructions
+${SYSTEM_PROMPT}
+
+## Question-Specific Instructions
 ${analysisInstructions}
-- Base conclusions only on the repository context and evidence provided to you.
-- Clearly distinguish confirmed facts from inferences.
-- Do not invent commits, files, dates, or motivations.
 
 ## Response Format
 ### Summary
-Provide a concise direct answer.
+Explain the historical rationale and trade-offs, not a feature description.
 
 ### Evidence
-List supporting files, commits, or code references. State "No supporting evidence provided" when needed.
+For every material claim, cite the supplied evidence ID. Reference commit IDs,
+issue numbers, and PR numbers when they are available. State "No supporting
+evidence provided" when necessary.
 
 ### Timeline
-List relevant events in chronological order. State "No timeline available" when needed.
+List only supported events in chronological order. State "No timeline available"
+when needed.
 
 ### Risks
-List uncertainty, assumptions, and potential side effects. State "No material risks identified" when needed.
+List uncertainty, assumptions, and potential side effects. Label inferences and
+state missing evidence. State "No material risks identified" when needed.
 
 ### Confidence
-State **High**, **Medium**, or **Low** and briefly explain why.
+State a **0–100** estimate and explain the rating from the evidence.
 
 ### Suggested Next Questions
 List useful follow-up questions, or state "None".`;
@@ -73,7 +78,7 @@ export function buildWhyIntroducedPrompt(
     question,
     repositoryContext,
     "Explain the original motivation for introducing the relevant code, configuration, or dependency.",
-    "- Identify the problem or requirement the introduction appears to address.\n- Connect the introduction to the earliest available supporting evidence.\n- Explain the resulting behavior or capability.",
+    "- Identify the original problem, requirement, incident, or architectural decision.\n- Prefer the earliest commit, issue, or merged PR that documents intent.\n- Describe trade-offs only when supported by evidence; label any inference.",
   );
 }
 
@@ -85,8 +90,8 @@ export function buildWhyChangedPrompt(
   return buildPrompt(
     question,
     repositoryContext,
-    "Explain the motivation and effect of a change to an existing repository element.",
-    "- Compare the behavior before and after the change when evidence permits.\n- Identify the problem, requirement, or trade-off motivating the change.\n- Describe downstream behavior affected by the change.",
+    "Explain why an existing repository decision was revised.",
+    "- Identify the triggering requirement, incident, regression, or trade-off.\n- Use linked commits, issues, and PRs to distinguish confirmed motivation from inference.\n- Do not replace historical rationale with an implementation walkthrough.",
   );
 }
 
@@ -98,8 +103,8 @@ export function buildBreakageAnalysisPrompt(
   return buildPrompt(
     question,
     repositoryContext,
-    "Analyze a reported breakage, failure, or regression in the repository.",
-    "- Identify the observed symptom and likely affected area.\n- Trace likely contributing changes or conditions from the available evidence.\n- Separate verified cause from plausible hypotheses and note missing evidence.",
+    "Explain the historical decisions and evidence relevant to a reported breakage, failure, or regression.",
+    "- Establish the reported symptom from evidence.\n- Trace only supported contributing changes or conditions.\n- Separate verified causes from hypotheses and specify the missing confirming evidence.",
   );
 }
 
@@ -111,8 +116,8 @@ export function buildRelevanceAnalysisPrompt(
   return buildPrompt(
     question,
     repositoryContext,
-    "Assess how the referenced repository element is used and why it matters.",
-    "- Identify the component, workflow, or behavior connected to the subject.\n- Describe direct and indirect consumers or dependencies when evidence permits.\n- Explain the impact of modifying or removing the subject.",
+    "Assess why the referenced repository element remains relevant to an engineering decision or dependency.",
+    "- Establish direct evidence of relevance before indirect impact.\n- Distinguish current relevance from historical relevance.\n- Do not claim removal is safe or unsafe without supporting evidence.",
   );
 }
 
@@ -124,7 +129,7 @@ export function buildUnknownPrompt(
   return buildPrompt(
     question,
     repositoryContext,
-    "Answer the repository question using only the available context and evidence.",
-    "- Identify the repository element or behavior the question concerns.\n- Explain what can be confirmed from the available evidence.\n- State which details cannot be determined from the available context.",
+    "Answer the repository question as an evidence-led explanation of engineering intent.",
+    "- Explain what the evidence can establish about why the code or decision exists.\n- Cite all material claims and label inferences.\n- State which details cannot be determined from the available context.",
   );
 }

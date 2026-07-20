@@ -9,7 +9,8 @@ injectable module; it contains no retrieval, prompt, or model business logic.
 ```text
 POST /api/ask
   -> request validation, request ID, logging, timing
-  -> EngineeringMemoryAgent compatibility adapter
+  -> EngineeringMemoryAgent backend adapter
+       -> Repository Adapter
   -> EngineeringMemoryCore
        -> Question Classifier
        -> Evidence Retriever
@@ -20,22 +21,29 @@ POST /api/ask
   -> response validation and structured JSON
 ```
 
-`EngineeringMemoryAgent` preserves the existing
-`answer(question, mockRepositoryData)` API. New integrations should construct
-`EngineeringMemoryCore` with the appropriate dependencies.
+`EngineeringMemoryAgent` accepts a backend-owned repository payload, adapts it
+to `RepositoryContext`, and retrieves evidence through an injected
+`RepositoryDataSource`. `EngineeringMemoryCore.answer(question, context)`
+remains available for callers that already own a normalized context.
 
 ## Folder Explanation
 
 | Folder | Responsibility |
 | --- | --- |
 | `lib/agent` | Core orchestration and legacy adapter. |
+| `lib/adapters` | Provider-neutral conversion from API payloads to AI context metadata. |
+| `lib/attribution` | Frontend-ready commit, PR, and issue source attribution. |
 | `lib/classifier` | Rule-based intent, confidence, target, and scope detection. |
+| `lib/confidence` | Deterministic evidence-confidence scoring. |
 | `lib/constants` | Typed question types, confidence thresholds, and prompt names. |
-| `lib/context` | Mock repository contracts and bounded context-package construction. |
+| `lib/context` | Mock repository contracts, compression, and bounded context-package construction. |
+| `lib/follow-ups` | Deterministic evidence-seeking follow-up questions. |
 | `lib/formatter` | Defensive Gemini Markdown parsing and `AIResponse` conversion. |
 | `lib/gemini` | Independent Gemini API transport. |
+| `lib/health` | Deterministic repository churn, staleness, and risk analysis. |
 | `lib/prompts` | System, intent-specific templates, and final prompt construction. |
-| `lib/retriever` | Provider-independent evidence retrieval and ranking. |
+| `lib/retriever` | Provider-independent retrieval, ranking, and deduplication. |
+| `lib/timeline` | Deterministic source-backed engineering timelines. |
 | `lib/types` | Shared domain contracts. |
 | `app/api/ask` | HTTP request and response boundary. |
 | `tests/sample-questions.ts` | Reusable classifier and pipeline fixtures. |
@@ -64,8 +72,10 @@ The core uses `intent` for retrieval and prompt selection.
 ### Retriever
 
 `retrieveEvidence(repositoryContext, questionType, repositoryData)` selects
-and ranks commits, pull requests, issues, and documentation. It uses only
-question-type keywords and optional file-path matches. It never calls Gemini.
+and ranks commits, pull requests, issues, and documentation. Ranking uses file
+matches, folder proximity, issue and PR links, recency, and modification
+frequency; duplicate source records are merged before result limits are applied.
+It never calls Gemini.
 
 `createEvidenceRetriever(source)` accepts `RepositoryDataSource`, the boundary
 for a future GitHub, database, or search-index implementation.
@@ -73,9 +83,10 @@ for a future GitHub, database, or search-index implementation.
 ### Context Builder
 
 `buildContextPackage(retrievalResult, options)` turns a `RetrievalResult` into
-a compact `ContextPackage`. It removes duplicate source-scoped IDs, orders
-known timestamps oldest-to-newest, places undated evidence last, and limits
-item count and approximate character size. It does not retrieve data itself.
+a compact `ContextPackage`. It removes duplicate source-scoped IDs, compresses
+long fields, prioritizes issues, merged PRs, commits, and architecture decisions,
+then orders retained evidence chronologically. The default evidence budget is
+7.5 KB, leaving room for prompt formatting under the 10 KB target.
 
 ### Prompt Builder
 
@@ -88,9 +99,11 @@ uncertainty disclosure, and confidence estimates.
 
 ### Gemini Client
 
-`createGeminiClient(config)` is independent of Engineering Memory. It supports
-model selection, timeouts, retries, exponential backoff, safe logging, and
-structured `GeminiApiError` values.
+`generateGeminiResponse(prompt)` is independent of Engineering Memory. It
+uses `GEMINI_API_KEY`, supports `GEMINI_MODEL` selection, and returns
+structured `GeminiApiError` values. Timeout and retry policy are intentionally
+not implemented yet and should be added at the transport boundary before
+production use.
 
 | Environment variable | Purpose |
 | --- | --- |
@@ -104,8 +117,10 @@ recognizes Markdown, bold, and simple plain-text headings. If the summary
 heading is absent or the output is malformed, the raw text becomes the summary
 instead of causing a parsing failure.
 
-`AIResponse` contains `summary`, backward-compatible `answer`, evidence,
-timeline, risks, confidence, and suggested next questions.
+`AIResponse` contains `summary`, backward-compatible `answer`, attributed
+evidence, a deterministic timeline, a 0–100 confidence assessment with an
+explanation, source records, three
+suggested follow-ups, and explainability metadata.
 
 ## Sequence Diagram
 
@@ -170,8 +185,20 @@ Successful response:
     "evidence": [],
     "timeline": [],
     "risks": [],
-    "confidence": "Medium",
-    "suggestedNextQuestions": []
+    "confidence": {
+      "score": 72,
+      "level": "MEDIUM",
+      "explanation": "The change is supported by a merged PR and issue discussion, but file history is limited."
+    },
+    "sources": [],
+    "suggestedNextQuestions": [],
+    "metadata": {
+      "retrievedEvidenceCount": 4,
+      "confidence": 72,
+      "retrievalTimeMs": 12,
+      "reasoningTimeMs": 340,
+      "promptSize": 6142
+    }
   },
   "meta": { "durationMs": 123 }
 }
@@ -201,8 +228,9 @@ Error response:
 
 ### Add a real repository provider
 
-1. Implement `RepositoryDataSource.getRepositoryData(repositoryContext)`.
-2. Translate provider records into the repository-data contracts.
+1. Normalize API payloads with `RepositoryAdapter`.
+2. Implement `RepositoryDataSource.getRepositoryData(repositoryContext)` and
+   return `RepositoryEvidenceData`.
 3. Build an `EvidenceRetriever` with `createEvidenceRetriever(source)`.
 4. Inject the retriever into `EngineeringMemoryCore`.
 5. Replace the API route's temporary mock-data mapping after adding provider
@@ -213,7 +241,7 @@ Error response:
 1. Add a value to `QUESTION_TYPES`.
 2. Add classifier keywords and patterns plus sample questions.
 3. Add a focused template and map it in `SYSTEM_PROMPTS`.
-4. Add retrieval keywords in `QUESTION_KEYWORDS`.
+4. Test ranking and prompt behavior with relevant repository evidence.
 5. Test the full pipeline with relevant mock evidence.
 
 ### Change prompt-size limits
@@ -236,18 +264,23 @@ truncation notice so the model can express uncertainty correctly.
 4. Update the API response guard in `app/api/ask/route.ts`.
 5. Update this document's API example.
 
-## Mock Data and Operations
+## Test Data and Operations
 
 `mockEngineeringRepositoryData` simulates a linked checkout-service history:
 100 commits, 15 pull requests, 30 issues, contributors, documentation,
 timeline events, commit relationships, and derived file histories.
 
-The API currently uses this fixture while overriding its repository and file
-context with request values. Replacing the fixture with a real source is the
-primary production integration task.
+The fixture is test-only. The API route passes backend repository metadata
+through `RepositoryAdapter`; an injected `RepositoryDataSource` supplies
+real history when available. Missing history is valid and produces an
+evidence-empty response with zero retrieved evidence.
 
 - Keep `GEMINI_API_KEY` server-only; never expose it through `NEXT_PUBLIC_*`.
 - Gemini logs intentionally exclude prompts and API keys.
 - API logs similarly omit question text.
 - Retrieval ranking selects likely evidence; it does not prove causation.
 - Prompt templates require uncertainty when evidence is incomplete.
+- Timeline, health, confidence, and follow-up modules are deterministic and do
+  not call Gemini.
+- `npm test` runs Core migration tests for adapter-backed empty and partial
+  repository responses.

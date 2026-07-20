@@ -1,6 +1,10 @@
 import type { QuestionType } from "@/lib/constants";
 import type { RankedEvidence, RetrievalResult } from "@/lib/retriever";
 import type { RepositoryContext, TimelineEvent } from "@/lib/types";
+import {
+  compressContextEvidence,
+  getEvidenceCharacterCount,
+} from "./compression";
 
 /** A commit available in mock repository data. */
 export interface MockCommit {
@@ -150,6 +154,8 @@ export interface ContextEvidence {
   relevanceScore: number;
   /** Retriever signals that explain why the item was selected. */
   relevanceReasons: string[];
+  /** Internal priority used to preserve engineering decisions during compression. */
+  compressionPriority?: number;
 }
 
 /** Bounded, chronological evidence prepared for prompt construction. */
@@ -177,7 +183,9 @@ export interface ContextBuilderOptions {
 }
 
 const DEFAULT_MAX_EVIDENCE_ITEMS = 12;
-const DEFAULT_MAX_CONTEXT_CHARACTERS = 6_000;
+/** Strict context-evidence cap, leaving room in an 8 KB Gemini prompt budget. */
+export const MAX_CONTEXT_PACKAGE_CHARACTERS = 7_500;
+const DEFAULT_MAX_CONTEXT_CHARACTERS = MAX_CONTEXT_PACKAGE_CHARACTERS;
 
 /** Converts retriever output into a compact, source-neutral evidence item. */
 function createContextEvidence<T>(
@@ -187,6 +195,7 @@ function createContextEvidence<T>(
   title: string,
   summary: string,
   occurredAt?: string,
+  compressionPriority?: number,
 ): ContextEvidence {
   return {
     id: `${source}:${id}`,
@@ -196,6 +205,7 @@ function createContextEvidence<T>(
     occurredAt,
     relevanceScore: evidence.score,
     relevanceReasons: evidence.reasons,
+    ...(compressionPriority !== undefined ? { compressionPriority } : {}),
   };
 }
 
@@ -229,17 +239,6 @@ export function orderEvidenceChronologically(
       left.id.localeCompare(right.id)
     );
   });
-}
-
-/** Returns the approximate character count of an evidence item in a prompt. */
-function getEvidenceCharacterCount(evidence: ContextEvidence): number {
-  return [
-    evidence.source,
-    evidence.title,
-    evidence.summary,
-    evidence.occurredAt ?? "",
-    evidence.relevanceReasons.join(" "),
-  ].join("\n").length;
 }
 
 /** Applies item-count and character limits while retaining chronological order. */
@@ -294,6 +293,7 @@ export function buildContextPackage(
         item.item.message,
         `Authored by ${item.item.author}; files: ${item.item.files.join(", ")}.`,
         item.item.authoredAt,
+        200,
       ),
     ),
     ...retrievalResult.pullRequests.map((item) =>
@@ -303,7 +303,8 @@ export function buildContextPackage(
         String(item.item.number),
         item.item.title,
         item.item.summary,
-        item.item.mergedAt,
+        item.item.mergedAt ?? item.item.createdAt,
+        item.item.status === "merged" ? 300 : 50,
       ),
     ),
     ...retrievalResult.issues.map((item) =>
@@ -314,6 +315,7 @@ export function buildContextPackage(
         item.item.title,
         item.item.summary,
         item.item.createdAt,
+        400,
       ),
     ),
     ...retrievalResult.documentation.map((item) =>
@@ -324,21 +326,44 @@ export function buildContextPackage(
         item.item.title,
         item.item.summary,
         item.item.updatedAt,
+        isArchitectureDecision(item.item.path, item.item.title, item.item.summary)
+          ? 100
+          : 0,
       ),
     ),
   ];
   const uniqueEvidence = removeDuplicateEvidence(evidence);
-  const orderedEvidence = orderEvidenceChronologically(uniqueEvidence);
-  const limitedEvidence = limitContextEvidence(orderedEvidence, options);
+  const compressedEvidence = compressContextEvidence(uniqueEvidence, {
+    maxEvidenceItems: Math.max(
+      0,
+      options.maxEvidenceItems ?? DEFAULT_MAX_EVIDENCE_ITEMS,
+    ),
+    maxCharacters: Math.min(
+      MAX_CONTEXT_PACKAGE_CHARACTERS,
+      Math.max(0, options.maxCharacters ?? DEFAULT_MAX_CONTEXT_CHARACTERS),
+    ),
+  });
+  const orderedEvidence = orderEvidenceChronologically(compressedEvidence.evidence);
 
   return {
     repositoryContext: retrievalResult.repositoryContext,
     questionType: retrievalResult.questionType,
-    evidence: limitedEvidence.evidence,
+    evidence: orderedEvidence,
     totalEvidenceCount: uniqueEvidence.length,
-    characterCount: limitedEvidence.characterCount,
-    truncated: limitedEvidence.truncated,
+    characterCount: compressedEvidence.characterCount,
+    truncated: compressedEvidence.truncated,
   };
+}
+
+/** Detects documentation that is likely to record an architecture decision. */
+function isArchitectureDecision(
+  path: string,
+  title: string,
+  summary: string,
+): boolean {
+  return /\b(adr|architecture|architectural|decision|design)\b/i.test(
+    `${path} ${title} ${summary}`,
+  );
 }
 
 /**
@@ -359,3 +384,9 @@ export {
   mockEngineeringRepositoryData,
   mockRepositoryData,
 } from "./mock-data";
+export {
+  compressContextEvidence,
+  getEvidenceCharacterCount,
+  type ContextCompressionOptions,
+  type ContextCompressionResult,
+} from "./compression";

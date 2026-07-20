@@ -1,18 +1,20 @@
-import type { QuestionType } from "@/lib/constants";
-import type { QuestionClassification } from "@/lib/classifier";
 import {
-  buildContextPackage,
-  buildRepositoryContext,
-  type MockRepositoryData,
-} from "@/lib/context";
+  RepositoryApiAdapter,
+  type RepositoryAdapter,
+} from "@/lib/adapters/repository-adapter";
+import { classifyQuestion, type QuestionClassification } from "@/lib/classifier";
+import type { QuestionType } from "@/lib/constants";
+import { buildContextPackage } from "@/lib/context";
 import {
   createAIResponse,
   formatGeminiResponse,
   type FormattedResponse,
 } from "@/lib/formatter";
 import { generateGeminiResponse } from "@/lib/gemini/client";
-import { classifyQuestion } from "@/lib/classifier";
-import { createEvidenceRetriever } from "@/lib/retriever";
+import {
+  createEvidenceRetriever,
+  type RepositoryDataSource,
+} from "@/lib/retriever";
 import type { AIResponse, Question, RepositoryContext } from "@/lib/types";
 
 import {
@@ -35,8 +37,10 @@ export type PromptBuilder = (
 export interface EngineeringMemoryAgentDependencies {
   /** Categorizes the user's question. */
   classifier: (question: string) => QuestionClassification;
-  /** Creates repository context from caller-supplied mock repository data. */
-  contextBuilder: (repositoryData: MockRepositoryData) => RepositoryContext;
+  /** Converts backend repository payloads into the shared context contract. */
+  repositoryAdapter: RepositoryAdapter;
+  /** Retrieves API-normalized repository evidence for a repository context. */
+  repositoryDataSource: RepositoryDataSource;
   /** Optional legacy prompt builders, used only when explicitly injected. */
   promptBuilders: Record<QuestionType, PromptBuilder>;
   /** Sends a completed prompt to Gemini. */
@@ -54,8 +58,17 @@ const defaultPromptBuilders: Record<QuestionType, PromptBuilder> = {
 };
 
 /**
- * Compatibility adapter for the former agent API. New code should construct
- * EngineeringMemoryCore directly with its dedicated module dependencies.
+ * Safe default used until a backend evidence provider is injected. Empty
+ * repositories remain answerable: the prompt receives an explicit absence of
+ * evidence and the deterministic metadata reports zero retrieved items.
+ */
+const emptyRepositoryDataSource: RepositoryDataSource = {
+  getRepositoryData: async () => undefined,
+};
+
+/**
+ * Compatibility facade for callers that prefer a single agent entry point.
+ * It accepts backend repository payloads and delegates all work to Core.
  */
 export class EngineeringMemoryAgent {
   private readonly dependencies: EngineeringMemoryAgentDependencies;
@@ -64,7 +77,8 @@ export class EngineeringMemoryAgent {
   constructor(dependencies: Partial<EngineeringMemoryAgentDependencies> = {}) {
     this.dependencies = {
       classifier: classifyQuestion,
-      contextBuilder: buildRepositoryContext,
+      repositoryAdapter: new RepositoryApiAdapter(),
+      repositoryDataSource: emptyRepositoryDataSource,
       promptBuilders: defaultPromptBuilders,
       geminiClient: generateGeminiResponse,
       responseFormatter: formatGeminiResponse,
@@ -73,23 +87,21 @@ export class EngineeringMemoryAgent {
     this.usesLegacyPromptBuilders = dependencies.promptBuilders !== undefined;
   }
 
-  /** Answers a question using caller-supplied mock repository data. */
+  /** Answers a question from a backend-owned repository payload. */
   async answer(
     question: Question,
-    repositoryData: MockRepositoryData,
+    repositoryResponse: unknown,
   ): Promise<AIResponse> {
-    const repositoryContext = this.dependencies.contextBuilder(repositoryData);
     const core = new EngineeringMemoryCore({
       classifier: this.dependencies.classifier,
-      retriever: createEvidenceRetriever({
-        getRepositoryData: async () => repositoryData,
-      }),
+      repositoryAdapter: this.dependencies.repositoryAdapter,
+      retriever: createEvidenceRetriever(this.dependencies.repositoryDataSource),
       contextBuilder: buildContextPackage,
       promptBuilder: this.usesLegacyPromptBuilders
-        ? (questionType) =>
+        ? (questionType, contextPackage, questionText) =>
             this.dependencies.promptBuilders[questionType](
-              question.text,
-              repositoryContext,
+              questionText,
+              contextPackage.repositoryContext,
             )
         : buildGeminiPrompt,
       geminiClient: this.dependencies.geminiClient,
@@ -97,7 +109,7 @@ export class EngineeringMemoryAgent {
         createAIResponse(this.dependencies.responseFormatter(rawOutput)),
     });
 
-    return core.answer(question, repositoryContext);
+    return core.answerFromBackend(question, repositoryResponse);
   }
 }
 

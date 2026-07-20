@@ -140,8 +140,36 @@ export function createAIResponse(formatted: FormattedResponse): AIResponse {
     evidence,
     timeline,
     risks: formatted.risks,
-    confidence: formatted.confidence,
     suggestedNextQuestions: formatted.suggestedNextQuestions,
+    metadata: {
+      retrievedEvidenceCount: 0,
+      confidence: 0,
+      retrievalTimeMs: 0,
+      reasoningTimeMs: 0,
+      promptSize: 0,
+    },
+    explainability: {
+      evidenceUsed: {
+        total: 0,
+        commitIds: [],
+        pullRequestNumbers: [],
+        issueNumbers: [],
+        documentationPaths: [],
+      },
+      timelineLength: timeline.length,
+      promptSize: 0,
+      retrievalTimeMs: 0,
+      reasoningTimeMs: 0,
+      confidence: {
+        score: 0,
+        level: "LOW",
+        explanation: "No repository evidence has been scored yet.",
+      },
+      reasoningQuality: {
+        level: "LOW",
+        explanation: "Reasoning quality is unavailable until evidence is retrieved.",
+      },
+    },
   };
 }
 

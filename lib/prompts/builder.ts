@@ -12,7 +12,7 @@ export const SYSTEM_PROMPTS: Record<QuestionType, string> = {
   WHY_CHANGED: `${SYSTEM_PROMPT}\n\n${WHY_CHANGED_PROMPT}`,
   BREAKAGE: `${SYSTEM_PROMPT}\n\n${BREAKAGE_PROMPT}`,
   RELEVANCE: `${SYSTEM_PROMPT}\n\n${RELEVANCE_PROMPT}`,
-  UNKNOWN: `${SYSTEM_PROMPT}\n\n## Analysis Focus: Unknown\n\nDescribe only what the supplied evidence can establish.`,
+  UNKNOWN: `${SYSTEM_PROMPT}\n\n## Analysis Focus: Unknown\n\nDescribe only what the supplied evidence can establish. Do not infer a reason when the question or evidence is ambiguous.`,
 };
 
 /** Returns the reusable system instruction for a classified question type. */
@@ -61,8 +61,15 @@ ${getSystemPrompt(questionType)}
 
 ## Analysis Constraints
 - Use only the repository evidence supplied below.
-- Clearly distinguish confirmed facts from inferences.
-- Do not invent commits, pull requests, issues, files, dates, or motivations.
+- Explain historical rationale, decisions, and trade-offs rather than merely
+  describing implementation behavior.
+- Cite the supplied evidence ID beside every material claim.
+- Reference commit IDs, issue numbers, and pull-request numbers when present.
+- Clearly label inferences and explain their supporting evidence.
+- State undocumented trade-offs, risks, and motivations as unavailable rather
+  than supplying a plausible explanation.
+- Never invent commits, pull requests, issues, files, dates, motivations,
+  dependencies, or outcomes.
 
 ## Repository Context
 - **Repository:** ${repositoryContext.repository}
@@ -78,19 +85,22 @@ ${formatRepositoryEvidence(contextPackage)}
 
 ## Required Response Format
 ### Summary
-Provide a concise direct answer appropriate for the question type.
+Provide a concise, professional explanation of why the code or decision exists.
 
 ### Evidence
-List the evidence IDs that support the answer.
+List cited evidence IDs, including relevant commits, issues, and PRs, and state
+how each supports the explanation.
 
 ### Timeline
 Describe relevant events in chronological order.
 
 ### Risks
-List uncertainty, assumptions, and potential side effects.
+List observed risks separately from assumptions, unsupported alternatives, and
+potential side effects.
 
 ### Confidence
-State **High**, **Medium**, or **Low** and briefly explain why.
+State a **0–100** estimate and explain the rating from evidence
+coverage, quality, and any unresolved uncertainty.
 
 ### Suggested Next Questions
 List useful follow-up questions, or state "None".`;

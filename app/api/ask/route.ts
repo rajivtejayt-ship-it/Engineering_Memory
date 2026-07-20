@@ -1,5 +1,4 @@
 import { EngineeringMemoryAgent } from "@/lib/agent";
-import { mockEngineeringRepositoryData } from "@/lib/context";
 import { GeminiApiError } from "@/lib/gemini/client";
 import type { AIResponse, Question } from "@/lib/types";
 
@@ -57,7 +56,9 @@ function isAIResponse(value: unknown): value is AIResponse {
     !isRecord(value) ||
     typeof value.summary !== "string" ||
     typeof value.answer !== "string" ||
-    value.answer !== value.summary
+    value.answer !== value.summary ||
+    !isExplainabilityMetadata(value.metadata) ||
+    !isExplainabilityInfo(value.explainability)
   ) {
     return false;
   }
@@ -79,10 +80,77 @@ function isAIResponse(value: unknown): value is AIResponse {
   return (
     (value.risks === undefined ||
       (Array.isArray(value.risks) && value.risks.every(isString))) &&
-    (value.confidence === undefined || typeof value.confidence === "string") &&
+    (value.confidence === undefined ||
+      isConfidenceAssessment(value.confidence)) &&
+    (value.sources === undefined ||
+      (Array.isArray(value.sources) && value.sources.every(isSourceAttribution))) &&
     (value.suggestedNextQuestions === undefined ||
       (Array.isArray(value.suggestedNextQuestions) &&
         value.suggestedNextQuestions.every(isString)))
+  );
+}
+
+/** Validates the frontend-ready evidence and reasoning details. */
+function isExplainabilityInfo(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isRecord(value.evidenceUsed) &&
+    typeof value.evidenceUsed.total === "number" &&
+    value.evidenceUsed.total >= 0 &&
+    isStringArray(value.evidenceUsed.commitIds) &&
+    isNumberArray(value.evidenceUsed.pullRequestNumbers) &&
+    isNumberArray(value.evidenceUsed.issueNumbers) &&
+    isStringArray(value.evidenceUsed.documentationPaths) &&
+    typeof value.timelineLength === "number" &&
+    value.timelineLength >= 0 &&
+    typeof value.promptSize === "number" &&
+    value.promptSize >= 0 &&
+    typeof value.retrievalTimeMs === "number" &&
+    value.retrievalTimeMs >= 0 &&
+    typeof value.reasoningTimeMs === "number" &&
+    value.reasoningTimeMs >= 0 &&
+    isConfidenceAssessment(value.confidence) &&
+    isReasoningQuality(value.reasoningQuality)
+  );
+}
+
+function isReasoningQuality(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.level === "LOW" || value.level === "MEDIUM" || value.level === "HIGH") &&
+    typeof value.explanation === "string"
+  );
+}
+
+/** Validates debugging metadata included with every AI response. */
+function isExplainabilityMetadata(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.retrievedEvidenceCount === "number" &&
+    value.retrievedEvidenceCount >= 0 &&
+    typeof value.confidence === "number" &&
+    value.confidence >= 0 &&
+    value.confidence <= 100 &&
+    typeof value.retrievalTimeMs === "number" &&
+    value.retrievalTimeMs >= 0 &&
+    typeof value.reasoningTimeMs === "number" &&
+    value.reasoningTimeMs >= 0 &&
+    typeof value.promptSize === "number" &&
+    value.promptSize >= 0
+  );
+}
+
+/** Validates a deterministic 0–100 confidence assessment. */
+function isConfidenceAssessment(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.score === "number" &&
+    value.score >= 0 &&
+    value.score <= 100 &&
+    (value.level === "LOW" ||
+      value.level === "MEDIUM" ||
+      value.level === "HIGH") &&
+    typeof value.explanation === "string"
   );
 }
 
@@ -93,6 +161,25 @@ function isEvidenceItem(value: unknown): boolean {
     typeof value.id === "string" &&
     typeof value.source === "string" &&
     typeof value.content === "string" &&
+    (value.location === undefined || typeof value.location === "string") &&
+    (value.sourceIds === undefined ||
+      (Array.isArray(value.sourceIds) && value.sourceIds.every(isString)))
+  );
+}
+
+/** Validates a repository source included for frontend attribution. */
+function isSourceAttribution(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    (value.type === "commit" ||
+      value.type === "pull-request" ||
+      value.type === "issue") &&
+    typeof value.summary === "string" &&
+    (value.commitId === undefined || typeof value.commitId === "string") &&
+    (value.pullRequestNumber === undefined ||
+      typeof value.pullRequestNumber === "number") &&
+    (value.issueNumber === undefined || typeof value.issueNumber === "number") &&
     (value.location === undefined || typeof value.location === "string")
   );
 }
@@ -105,13 +192,23 @@ function isTimelineEvent(value: unknown): boolean {
     typeof value.summary === "string" &&
     (value.occurredAt === undefined || typeof value.occurredAt === "string") &&
     (value.evidenceIds === undefined ||
-      (Array.isArray(value.evidenceIds) && value.evidenceIds.every(isString)))
+      (Array.isArray(value.evidenceIds) && value.evidenceIds.every(isString))) &&
+    (value.annotations === undefined ||
+      (Array.isArray(value.annotations) && value.annotations.every(isString)))
   );
 }
 
 /** Type guard used for string-array response fields. */
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number");
 }
 
 /** Converts a start timestamp to a rounded execution duration. */
@@ -176,10 +273,7 @@ function getErrorDetails(error: unknown): {
   };
 }
 
-/**
- * Answers an Engineering Memory question using temporary mock repository data.
- * Repository retrieval can replace this mock-data mapping in a future revision.
- */
+/** Answers an Engineering Memory question from backend repository context. */
 export async function POST(request: Request): Promise<Response> {
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
@@ -231,7 +325,6 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const response = await agent.answer(question, {
-      ...mockEngineeringRepositoryData,
       repository: body.repositoryId.trim(),
       filePath: body.filePath.trim(),
     });

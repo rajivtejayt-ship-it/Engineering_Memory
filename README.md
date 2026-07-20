@@ -1,97 +1,36 @@
-# Engineering Memory
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-**Reconstruct intent, map decisions, and index human reasoning.**
+## Getting Started
 
-Engineering Memory is a powerful frontend application designed to reconstruct the underlying intent behind codebase changes. It ingests historical engineering artifacts (commits, PRs, architecture decisions) and presents them in a highly interactive, timeline-driven workspace that gives developers the "why" behind the code.
+First, run the development server:
 
-> **Note**: This is the Stage 8 Hardened Release. The frontend architecture is complete and currently runs entirely on mock data. It is designed so that backend integration requires simply swapping the data layer.
-
-## 🏗 Project Architecture
-
-The architecture emphasizes strict separation between layout components, presentation layers, data access layers, and mock data.
-
-- **App Router (`src/app`)**: Contains all entry points. Marketing and application workspaces are partitioned (`/(marketing)` vs `/(app)`).
-- **Component Layer (`src/components`)**:
-  - `ui/`: Core design system primitives (buttons, cards, dropdowns).
-  - `layout/`: Macro-layout structures (AppShell, Navigation).
-  - `repository/`: Domain-specific components for codebase visualization.
-  - `timeline/`: Historical event visualization.
-  - `feedback/`: Loaders, toasts, badges.
-- **State Layer (`src/components/providers`)**: React Context bounds the application state (Theme, Repository Data).
-- **Data Layer (`src/mock-data`)**: All backend simulations and JSON fixture data.
-- **Design System (`src/design-system`)**: All semantic tokens, motion curves, and custom icons.
-
-## 📂 Folder Structure
-
-```
-├── src/
-│   ├── app/                # Next.js App Router (Pages, Layouts, Globals)
-│   │   ├── (app)/          # Authorized Application Routes (/dashboard, /import)
-│   │   └── (marketing)/    # Public Routes (/login, landing)
-│   ├── components/         # React Components
-│   │   ├── feedback/       # Badges, Loaders, Spinners
-│   │   ├── landing/        # Marketing Page Components
-│   │   ├── layout/         # AppShell, Sidebar, TopNav
-│   │   ├── markdown/       # Safe Markdown Renderers
-│   │   ├── navigation/     # Nav links, sections
-│   │   ├── providers/      # Theme, Repository Context
-│   │   ├── repository/     # Code Viewer, File Explorer
-│   │   ├── shared/         # Command Palette, Search
-│   │   ├── timeline/       # Historical Spine, Event Nodes
-│   │   └── ui/             # Reusable UI Primitives (Radix/Tailwind)
-│   ├── constants/          # Application Constants
-│   ├── design-system/      # Tokens, Motion Curves, Icons
-│   ├── lib/                # Utility Functions (cn)
-│   ├── mock-data/          # Mock data for demonstration mode
-│   └── types/              # Domain-specific TypeScript Interfaces
-├── next.config.ts          # Turbopack-enabled configuration
-└── tailwind.config.ts      # Tailwind Configuration
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-## 🎨 Design System
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-The application uses the Engineering Memory Design System which defines:
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-- **Tokens**: Strictly semantic CSS variables mapping to a premium dark-mode aesthetic (e.g., `var(--bg-panel)`, `var(--accent)`).
-- **Motion**: Defined in `src/design-system/motion.ts` using `framer-motion` for unified transition curves and interaction states.
-- **Typography**: Inter (sans) and JetBrains Mono (code/meta), defined in `globals.css`.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-> **Rule**: Do not hardcode Hex or RGB values in components. Always use semantic CSS tokens.
+## Learn More
 
-## 🛠 Tech Stack
+To learn more about Next.js, take a look at the following resources:
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **Bundler**: Turbopack
-- **Styling**: Tailwind CSS + Native CSS Variables
-- **Animations**: Framer Motion
-- **Icons**: Lucide React
-- **Primitives**: Radix UI (accessible component roots)
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-## 🚀 Development Commands
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-This project uses `npm` as its package manager.
+## Deploy on Vercel
 
-- **Start Dev Server**: `npm run dev`
-- **Build for Production**: `npm run build`
-- **Start Prod Server**: `npm run start`
-- **Run Linting**: `npm run lint`
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-## 🏁 Frontend Stages
-
-The project was built over 8 sequential stages, each hardening a specific layer of the application:
-1. **Architecture**: Project setup and foundational directories.
-2. **Component Library**: Primitive UI elements and design tokens.
-3. **Application Shell**: Navigation, Sidebars, Context Panes.
-4. **Landing Experience**: Marketing and Login flows.
-5. **Dashboard**: Repository selection and overview.
-6. **Core Workspace**: Timeline, Code Viewer, File Explorer, Markdown rendering.
-7. **Demo Integration**: End-to-end user flow using strictly typed Mock Data.
-8. **Production Hardening**: Accessibility audits, XSS mitigation, syntax fixes, and layout polishing.
-
-## 🤝 Contribution Guidelines
-
-1. **No External Dependencies**: Do not introduce new component libraries unless absolutely necessary. Build on the established Radix/Tailwind primitives.
-2. **Strict Accessibility (a11y)**: Ensure all interactive elements use semantic HTML tags (`<button>`, `<a href>`). Support keyboard navigation (`Focus-Visible`).
-3. **Security**: Never inject raw HTML. Use safe React component parsing for rich text and syntax highlighting.
-4. **Mock Data Separation**: Do not leak mock data logic into standard component definitions. Isolate mock state in Context Providers.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

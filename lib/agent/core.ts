@@ -141,9 +141,10 @@ export class EngineeringMemoryCore {
     const classification = this.classifyQuestion(question.text);
     const questionType = classification.intent;
     const retrievalStartedAt = Date.now();
-    const retrievalResult = await this.retrieveEvidence(
+    const retrievalResult = await this.retrieveEvidenceForQuestion(
       repositoryContext,
       questionType,
+      question.text,
     );
     const retrievalTimeMs = Date.now() - retrievalStartedAt;
     const reasoningStartedAt = Date.now();
@@ -188,6 +189,27 @@ export class EngineeringMemoryCore {
   }
 
   /**
+   * Uses the production retriever's internal question-aware capability when
+   * available, while retaining compatibility with injected public retrievers.
+   */
+  private retrieveEvidenceForQuestion(
+    repositoryContext: RepositoryContext,
+    questionType: QuestionType,
+    questionText: string,
+  ): Promise<RetrievalResult> {
+    const retriever = this.dependencies.retriever as EvidenceRetriever &
+      Partial<QuestionAwareEvidenceRetriever>;
+
+    return retriever.retrieveEvidenceForQuestion
+      ? retriever.retrieveEvidenceForQuestion(
+          repositoryContext,
+          questionType,
+          questionText,
+        )
+      : retriever.retrieveEvidence(repositoryContext, questionType);
+  }
+
+  /**
    * Runs the pipeline from a backend-owned repository payload. Existing callers
    * may continue using answer(question, repositoryContext) directly.
    */
@@ -200,6 +222,15 @@ export class EngineeringMemoryCore {
       this.adaptRepositoryContext(repositoryResponse),
     );
   }
+}
+
+/** Internal optional capability supplied by the production evidence retriever. */
+interface QuestionAwareEvidenceRetriever {
+  retrieveEvidenceForQuestion(
+    repositoryContext: RepositoryContext,
+    questionType: QuestionType,
+    questionText: string,
+  ): Promise<RetrievalResult>;
 }
 
 /** Counts evidence records selected by the Retriever across all source types. */

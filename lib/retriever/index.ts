@@ -217,9 +217,25 @@ export function retrieveEvidence(
   repositoryData: RepositoryEvidenceData = {},
   options: RetrievalOptions = {},
 ): RetrievalResult {
+  return retrieveEvidenceInternal(
+    repositoryContext,
+    questionType,
+    repositoryData,
+    options,
+  );
+}
+
+/** Internal question-aware path used by the production agent wiring. */
+function retrieveEvidenceInternal(
+  repositoryContext: RepositoryContext,
+  questionType: QuestionType,
+  repositoryData: RepositoryEvidenceData,
+  options: RetrievalOptions,
+  questionText = "",
+): RetrievalResult {
   const maxResultsPerType =
     options.maxResultsPerType ?? DEFAULT_MAX_RESULTS_PER_TYPE;
-  const rankedEvidence = new EvidenceRankingEngine().rank(
+  const rankedEvidence = new EvidenceRankingEngine(questionText).rank(
     repositoryContext,
     repositoryData,
     questionType,
@@ -258,18 +274,46 @@ export function createEvidenceRetriever(
   repositoryDataSource: RepositoryDataSource,
   options: RetrievalOptions = {},
 ): EvidenceRetriever {
-  return {
+  const retriever: QuestionAwareEvidenceRetriever = {
     async retrieveEvidence(repositoryContext, questionType) {
       const repositoryData = await repositoryDataSource.getRepositoryData(
         repositoryContext,
       );
 
-      return retrieveEvidence(
+      return retrieveEvidenceInternal(
         repositoryContext,
         questionType,
-        repositoryData,
+        repositoryData ?? {},
         options,
       );
     },
+    async retrieveEvidenceForQuestion(repositoryContext, questionType, questionText) {
+      const repositoryData = await repositoryDataSource.getRepositoryData(
+        repositoryContext,
+      );
+
+      return retrieveEvidenceInternal(
+        repositoryContext,
+        questionType,
+        repositoryData ?? {},
+        options,
+        questionText,
+      );
+    },
   };
+
+  return retriever;
+}
+
+/**
+ * Internal runtime capability. The public EvidenceRetriever contract remains
+ * unchanged so injected retrievers that only implement that contract continue
+ * to work.
+ */
+interface QuestionAwareEvidenceRetriever extends EvidenceRetriever {
+  retrieveEvidenceForQuestion(
+    repositoryContext: RepositoryContext,
+    questionType: QuestionType,
+    questionText: string,
+  ): Promise<RetrievalResult>;
 }

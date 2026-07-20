@@ -56,7 +56,7 @@ export function parseGitHubRepositoryUrl(
   }
 
   const pathSegments = url.pathname.split("/").filter(Boolean);
-  if (pathSegments.length !== 2) {
+  if (pathSegments.length < 2) {
     throw new Error("Repository URL must include an owner and repository name.");
   }
 
@@ -73,12 +73,17 @@ export function parseGitHubRepositoryUrl(
 /** Fetches public repository metadata required by import and context building. */
 export async function getRepository(
   reference: GitHubRepositoryReference,
+  accessToken?: string,
 ): Promise<GitHubRepository> {
   const repositoryUrl = `${GITHUB_API_URL}/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}`;
-  const response = await fetchGitHub(repositoryUrl);
+  const response = await fetchGitHub(repositoryUrl, accessToken);
 
   if (response.status === 404) {
     throw new Error("GitHub repository was not found.");
+  }
+
+  if (response.status === 403 || response.status === 429) {
+    throw new Error("GitHub API rate limit reached. Connect GitHub for a higher limit or try again later.");
   }
 
   if (!response.ok) {
@@ -91,9 +96,13 @@ export async function getRepository(
   }
 
   const [languagesResponse, branchesResponse] = await Promise.all([
-    fetchGitHub(`${repositoryUrl}/languages`),
-    fetchGitHub(`${repositoryUrl}/branches?per_page=100`),
+    fetchGitHub(`${repositoryUrl}/languages`, accessToken),
+    fetchGitHub(`${repositoryUrl}/branches?per_page=100`, accessToken),
   ]);
+
+  if (languagesResponse.status === 403 || languagesResponse.status === 429 || branchesResponse.status === 403 || branchesResponse.status === 429) {
+    throw new Error("GitHub API rate limit reached. Connect GitHub for a higher limit or try again later.");
+  }
 
   if (!languagesResponse.ok || !branchesResponse.ok) {
     throw new Error("GitHub repository metadata could not be fetched.");
@@ -154,15 +163,16 @@ export async function getPullRequests(): Promise<void> {}
 /** TODO: Fetch issues when the RepositoryContext builder is implemented. */
 export async function getIssues(): Promise<void> {}
 
-/** TODO: Fetch discussions when the RepositoryContext builder is implemented. */
+/** Discussion collection is intentionally deferred until a GitHub discussion source is configured. */
 export async function getDiscussions(): Promise<void> {}
 
-function fetchGitHub(url: string): Promise<Response> {
+function fetchGitHub(url: string, accessToken?: string): Promise<Response> {
   return fetch(url, {
     headers: {
       Accept: "application/vnd.github+json",
       "User-Agent": "engineering-memory",
       "X-GitHub-Api-Version": "2022-11-28",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
   });
 }

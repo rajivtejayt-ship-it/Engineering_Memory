@@ -166,8 +166,22 @@ function selectRelevant<T>(
   rankedItems: RankedEvidence<T>[],
   maxResultsPerType: number,
 ): RankedEvidence<T>[] {
-  return rankedItems
+  const rankedMatches = rankedItems
     .filter((item) => item.score > 0)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        getEvidenceSortKey(left.item).localeCompare(getEvidenceSortKey(right.item)),
+    )
+    .slice(0, maxResultsPerType);
+
+  if (rankedMatches.length > 0) {
+    return rankedMatches;
+  }
+
+  // File-level data is not always available from a provider. Preserve the
+  // deterministic fallback evidence rather than generating a blank prompt.
+  return [...rankedItems]
     .sort(
       (left, right) =>
         right.score - left.score ||

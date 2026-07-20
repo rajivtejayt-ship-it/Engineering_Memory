@@ -1,4 +1,5 @@
 import { EngineeringMemoryAgent } from "@/lib/agent";
+import { createProductionRepositoryDataSource } from "@/lib/context/repository-data-source";
 import { GeminiApiError } from "@/lib/gemini/client";
 import type { AIResponse, Question } from "@/lib/types";
 
@@ -27,7 +28,9 @@ interface AskErrorResponse {
   };
 }
 
-const agent = new EngineeringMemoryAgent();
+const agent = new EngineeringMemoryAgent({
+  repositoryDataSource: createProductionRepositoryDataSource(),
+});
 
 /** Returns whether a value is a plain object suitable for runtime validation. */
 function isRecord(value: unknown): value is Record<string, unknown> {

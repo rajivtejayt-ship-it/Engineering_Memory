@@ -1,5 +1,3 @@
-/// <reference types="node" />
-
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 /** Error returned when Gemini cannot generate a response. */

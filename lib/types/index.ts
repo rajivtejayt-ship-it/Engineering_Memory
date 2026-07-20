@@ -44,7 +44,9 @@ export interface TimelineEvent {
 
 /** The generated answer and its supporting references. */
 export interface AIResponse {
-  /** Natural-language answer produced for a question. */
+  /** Concise summary produced for a question. */
+  summary: string;
+  /** Backwards-compatible alias of the generated summary. */
   answer: string;
   /** Evidence extracted from the generated response. */
   evidence?: Evidence[];
@@ -54,4 +56,6 @@ export interface AIResponse {
   risks?: string[];
   /** Stated confidence and any accompanying rationale. */
   confidence?: string;
+  /** Follow-up questions suggested by the generated response. */
+  suggestedNextQuestions?: string[];
 }

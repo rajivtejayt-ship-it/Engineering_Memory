@@ -2,7 +2,7 @@ import {
   getRepository,
   parseGitHubRepositoryUrl,
 } from "@/lib/github/client";
-import { prisma } from "@/lib/prisma";
+import { getPrisma } from "@/lib/prisma";
 import type {
   ImportRepositoryRequest,
   ImportRepositoryResponse,
@@ -11,6 +11,7 @@ import type {
 const DEMO_USER_EMAIL = "demo@engineering-memory.local";
 
 export async function POST(request: Request) {
+  const prisma = getPrisma();
   const body = await readRequestBody(request);
   if (!body) {
     return Response.json(

@@ -1,65 +1,66 @@
-import Image from "next/image";
+import Link from "next/link";
+import styles from "./landing.module.css";
+
+const proofPoints = [
+  ["01", "Evidence first", "Every explanation begins with commits, pull requests, issues, and documentation."],
+  ["02", "Decision trails", "Turn disconnected repository events into an ordered engineering story."],
+  ["03", "Built for review", "Keep uncertainty, sources, risks, and confidence visible in every answer."],
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className={`${styles.scope} landing-shell`}>
+      <div className="landing-orb landing-orb-one" aria-hidden="true" />
+      <div className="landing-orb landing-orb-two" aria-hidden="true" />
+
+      <header className="landing-nav">
+        <Link className="landing-mark" href="/"><span /> <b>engineering</b> memory</Link>
+        <nav aria-label="Product navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#proof">Why it matters</a>
+        </nav>
+        <a className="landing-login" href="/api/auth/github">Sign in with GitHub <span>→</span></a>
+      </header>
+
+      <section className="landing-hero">
+        <div className="landing-copy">
+          <p className="landing-kicker"><span /> The repository historian</p>
+          <h1>Know the reason <em>before</em> you change the code.</h1>
+          <p>Engineering Memory reconstructs the decisions behind a system—linking commits, pull requests, issues, and the conversations that shaped them.</p>
+          <div className="landing-actions">
+            <Link className="landing-primary" href="/import">Start with a repository <span>↗</span></Link>
+            <a className="landing-secondary" href="#how-it-works">See how it works <span>↓</span></a>
+          </div>
+          <div className="landing-note"><span /> No code generation. Just the context your team already created.</div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div className="history-visual" aria-label="Example engineering decision trail">
+          <div className="history-grid" />
+          <span className="history-node node-file">auth.ts</span>
+          <span className="history-node node-issue">#184</span>
+          <span className="history-node node-pr">PR #298</span>
+          <article className="history-card">
+            <header><span /> Decision trail <b>92% supported</b></header>
+            <ol>
+              <li><i /> <div><small>ISSUE CREATED · OCT 19</small><strong>Session leakage after deploy</strong></div></li>
+              <li><i /> <div><small>OPTIONS REVIEWED · OCT 20</small><strong>Isolation options compared</strong></div></li>
+              <li><i /> <div><small>MERGED · OCT 24</small><strong>Signed edge sessions introduced</strong></div></li>
+            </ol>
+          </article>
+          <p className="history-caption"><span /> 1,248 linked artifacts in memory</p>
         </div>
-      </main>
-    </div>
+      </section>
+
+      <section className="landing-proof" id="proof">
+        {proofPoints.map(([number, title, description]) => <article key={number}><span>{number}</span><h2>{title}</h2><p>{description}</p></article>)}
+      </section>
+
+      <section className="landing-workflow" id="how-it-works">
+        <div><p className="landing-kicker"><span /> A calmer way to investigate</p><h2>Questions belong in the history, not in another chat.</h2></div>
+        <div className="workflow-steps"><p><b>Ask in Codelore</b> Describe the decision, risk, or change you need to understand.</p><p><b>Review the evidence</b> See exactly which source records support the explanation.</p><p><b>Move with confidence</b> Follow the timeline, risks, and suggested next questions.</p></div>
+      </section>
+
+      <footer className="landing-footer"><span><i /> Engineering Memory / repository intelligence</span><Link href="/import">Import a repository →</Link></footer>
+    </main>
   );
 }

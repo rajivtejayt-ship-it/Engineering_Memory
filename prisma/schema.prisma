@@ -16,9 +16,24 @@ enum ImportStatus {
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
+  githubLogin  String?      @unique
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   repositories Repository[]
+  sessions     Session[]
+}
+
+model Session {
+  id                String   @id @default(cuid())
+  token             String   @unique
+  githubAccessToken String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  userId            String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model Repository {

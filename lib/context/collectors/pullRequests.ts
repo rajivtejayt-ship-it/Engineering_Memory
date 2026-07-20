@@ -15,8 +15,15 @@ export async function collectPullRequests(
     name: input.repository,
   });
 
-  return pullRequests.map(({ updatedAt: _updatedAt, ...pullRequest }) => ({
-    ...pullRequest,
+  return pullRequests.map((pullRequest) => ({
+    number: pullRequest.number,
+    title: pullRequest.title,
+    state: pullRequest.state,
+    author: pullRequest.author,
+    createdAt: pullRequest.createdAt,
+    closedAt: pullRequest.closedAt,
+    mergedAt: pullRequest.mergedAt,
+    url: pullRequest.url,
     // Bodies and file changes are intentionally omitted to keep collection to
     // the single lightweight list request.
     body: null,

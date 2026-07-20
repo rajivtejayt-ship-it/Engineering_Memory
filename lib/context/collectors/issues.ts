@@ -15,8 +15,14 @@ export async function collectIssues(
     name: input.repository,
   });
 
-  return issues.map(({ updatedAt: _updatedAt, labels: _labels, ...issue }) => ({
-    ...issue,
+  return issues.map((issue) => ({
+    number: issue.number,
+    title: issue.title,
+    state: issue.state,
+    author: issue.author,
+    createdAt: issue.createdAt,
+    closedAt: issue.closedAt,
+    url: issue.url,
     // Issue bodies are intentionally omitted to keep the collector lightweight.
     body: null,
   }));

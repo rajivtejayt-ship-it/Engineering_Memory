@@ -44,7 +44,6 @@ function isAskRequestBody(value: unknown): value is AskRequestBody {
     typeof value.repositoryId === "string" &&
     value.repositoryId.trim().length > 0 &&
     typeof value.filePath === "string" &&
-    value.filePath.trim().length > 0 &&
     typeof value.question === "string" &&
     value.question.trim().length > 0
   );
@@ -240,6 +239,16 @@ function getErrorDetails(error: unknown): {
   message: string;
 } {
   if (!(error instanceof GeminiApiError)) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (message.startsWith("GitHub ")) {
+      return {
+        status: 502,
+        code: "REPOSITORY_UNAVAILABLE",
+        message: "Repository history could not be fetched. Check that the repository is public and exists.",
+      };
+    }
+
     return {
       status: 500,
       code: "INTERNAL_ERROR",

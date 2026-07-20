@@ -3,6 +3,7 @@ import {
   parseGitHubRepositoryUrl,
 } from "@/lib/github/client";
 import { getPrisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth/github";
 import type {
   ImportRepositoryRequest,
   ImportRepositoryResponse,
@@ -11,7 +12,6 @@ import type {
 const DEMO_USER_EMAIL = "demo@engineering-memory.local";
 
 export async function POST(request: Request) {
-  const prisma = getPrisma();
   const body = await readRequestBody(request);
   if (!body) {
     return Response.json(
@@ -30,9 +30,15 @@ export async function POST(request: Request) {
     );
   }
 
+  let session: Awaited<ReturnType<typeof getSession>> = null;
+  try {
+    session = await getSession(request);
+  } catch {
+    // Public URL imports do not require an authenticated session.
+  }
   let githubRepository;
   try {
-    githubRepository = await getRepository(reference);
+    githubRepository = await getRepository(reference, session?.githubAccessToken ?? undefined);
   } catch (error) {
     return Response.json(
       { message: getErrorMessage(error) },
@@ -40,16 +46,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const demoUser = await prisma.user.upsert({
-    where: { email: DEMO_USER_EMAIL },
-    update: {},
-    create: { email: DEMO_USER_EMAIL },
+  let prisma;
+  try {
+    prisma = getPrisma();
+  } catch (error) {
+    return Response.json(
+      { message: error instanceof Error ? error.message : "Repository imports are not configured." },
+      { status: 503 },
+    );
+  }
+
+  const user = session?.user ?? await prisma.user.upsert({
+    where: { email: DEMO_USER_EMAIL }, update: {}, create: { email: DEMO_USER_EMAIL },
   });
 
   const repository = await prisma.repository.upsert({
     where: {
       userId_owner_name: {
-        userId: demoUser.id,
+        userId: user.id,
         owner: githubRepository.owner,
         name: githubRepository.name,
       },
@@ -59,7 +73,7 @@ export async function POST(request: Request) {
       defaultBranch: githubRepository.defaultBranch,
     },
     create: {
-      userId: demoUser.id,
+      userId: user.id,
       owner: githubRepository.owner,
       name: githubRepository.name,
       url: githubRepository.url,
